@@ -1,4 +1,10 @@
 #include "systemcalls.h"
+#include <sys/types.h>
+#include <sys/stat.h>
+#include <sys/wait.h>
+#include <fcntl.h>
+#include <stdlib.h>
+#include <unistd.h>
 
 /**
  * @param cmd the command to execute with system()
@@ -16,6 +22,11 @@ bool do_system(const char *cmd)
  *   and return a boolean true if the system() call completed with success
  *   or false() if it returned a failure
 */
+    int retCode = system(cmd);
+
+    if (retCode != 0) {
+        return false;
+    }
 
     return true;
 }
@@ -59,8 +70,29 @@ bool do_exec(int count, ...)
  *
 */
 
-    va_end(args);
+    int status = 0;
+    fflush(stdout); 
+    pid_t pid = fork();
 
+    if (pid == 0)
+    {
+        int retCode = execv(command[0], command);
+        if (retCode < 0)
+        {
+            exit(92);
+        }    
+    }
+    else if (pid > 0)
+    {
+        wait(&status);
+        if (WEXITSTATUS(status))
+        {
+            return false;
+        }
+    }
+    
+
+    va_end(args);
     return true;
 }
 
@@ -92,6 +124,46 @@ bool do_exec_redirect(const char *outputfile, int count, ...)
  *   The rest of the behaviour is same as do_exec()
  *
 */
+    int status = 1;
+    pid_t pid = -1;
+    
+    fflush(stdout); 
+    pid = fork();
+
+    int fd = open(outputfile, O_WRONLY|O_TRUNC|O_CREAT, 0644);
+    if (fd < 0)
+    {
+        perror("open");
+        return false;
+    }
+
+    if (pid == 0)
+    {
+        if (dup2(fd, 1) < 0) {
+            perror("dup2");
+            return false;
+        }
+        close(fd);
+        int retCode = execv(command[0], command);
+        if (retCode < 0)
+        {
+            exit(92);
+        }
+    }
+    else if (pid > 0)
+    {
+        wait(&status);
+        close(fd);
+        if (WEXITSTATUS(status))
+        {
+            return false;
+        }
+    }
+    else
+    {
+        perror("fork");
+        return false;
+    }
 
     va_end(args);
 
